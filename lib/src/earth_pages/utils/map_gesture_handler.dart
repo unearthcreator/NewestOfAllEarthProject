@@ -4,6 +4,7 @@ import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:map_mvp_project/services/error_handler.dart';
 import 'package:map_mvp_project/src/earth_pages/utils/map_dialog_handler.dart';
 import 'package:map_mvp_project/src/earth_pages/utils/map_annotations_manager.dart';
+import 'package:map_mvp_project/src/earth_pages/utils/trash_can_handler.dart';
 
 class MapGestureHandler {
   final MapboxMap mapboxMap;
@@ -17,13 +18,18 @@ class MapGestureHandler {
   PointAnnotation? _selectedAnnotation;
   bool _isDragging = false;
   bool _isProcessingDrag = false;
-  OverlayEntry? _trashCanOverlayEntry;
+  final TrashCanHandler _trashCanHandler;
+
+  ScreenCoordinate? _lastDragScreenPoint;
+  
+  // Store the original point of the annotation before dragging
+  Point? _originalPoint;
 
   MapGestureHandler({
     required this.mapboxMap,
     required this.annotationsManager,
     required this.context,
-  });
+  }) : _trashCanHandler = TrashCanHandler(context: context);
 
   Future<void> handleLongPress(ScreenCoordinate screenPoint) async {
     try {
@@ -48,6 +54,8 @@ class MapGestureHandler {
       } else {
         _selectedAnnotation = await annotationsManager.findNearestAnnotation(pressPoint);
         if (_selectedAnnotation != null) {
+          // Store the original point of the annotation before it starts to drag
+          _originalPoint = _selectedAnnotation?.geometry;
           _startDragTimer();
         }
       }
@@ -64,21 +72,37 @@ class MapGestureHandler {
       logger.i('Drag timer completed - annotation can now be dragged');
       _isDragging = true;
       _isProcessingDrag = false;
-      _showTrashCanOverlay();
+      _trashCanHandler.showTrashCan();
     });
   }
 
   Future<void> handleDrag(ScreenCoordinate screenPoint) async {
-    final annotationToUpdate = _selectedAnnotation;
+    if (!_isDragging || _selectedAnnotation == null) {
+      logger.i('Skipping drag, either not dragging or annotation is null now');
+      return;
+    }
 
-    if (!_isDragging || annotationToUpdate == null || _isProcessingDrag) {
-      logger.i('Skipping drag: isDragging=$_isDragging, hasAnnotation=${annotationToUpdate != null}');
+    final annotationToUpdate = _selectedAnnotation;
+    if (annotationToUpdate == null) {
+      logger.i('Skipping drag: annotation is null');
+      return;
+    }
+
+    if (_isProcessingDrag) {
+      logger.i('Skipping drag, already processing');
       return;
     }
 
     try {
       _isProcessingDrag = true;
+      _lastDragScreenPoint = screenPoint;
       final newPoint = await mapboxMap.coordinateForPixel(screenPoint);
+
+      if (!_isDragging || _selectedAnnotation == null) {
+        logger.i('Skipping drag update after async call because dragging ended or annotation is null');
+        return;
+      }
+
       if (newPoint != null) {
         await annotationsManager.updateVisualPosition(annotationToUpdate, newPoint);
       }
@@ -86,18 +110,72 @@ class MapGestureHandler {
       logger.e('Error during drag: $e');
     } finally {
       _isProcessingDrag = false;
-      if (!_isDragging) {
-        _selectedAnnotation = null; // Clear selection if drag ended
-      }
     }
   }
 
-  void endDrag() {
+  Future<void> endDrag() async {
     logger.i('Ending drag');
+
+    // Keep a local reference in case we need to revert
+    final annotationToRemove = _selectedAnnotation;
+
+    bool removedAnnotation = false;
+    bool revertedPosition = false;
+
+    if (annotationToRemove != null &&
+        _lastDragScreenPoint != null &&
+        _trashCanHandler.isOverTrashCan(_lastDragScreenPoint!)) {
+      
+      final shouldRemove = await _showRemoveConfirmationDialog();
+      if (shouldRemove == true) {
+        logger.i('User confirmed removal - removing annotation.');
+        annotationsManager.removeAnnotation(annotationToRemove);
+        removedAnnotation = true;
+      } else {
+        logger.i('User cancelled - revert annotation to original position.');
+        if (_originalPoint != null) {
+          // Revert the annotation's position to the original point
+          await annotationsManager.updateVisualPosition(annotationToRemove, _originalPoint!);
+          revertedPosition = true;
+        }
+      }
+    }
+
+    // Reset state
+    _selectedAnnotation = null;
     _isDragging = false;
     _isProcessingDrag = false;
-    _selectedAnnotation = null;
-    _removeTrashCanOverlay();
+    _lastDragScreenPoint = null;
+    _trashCanHandler.hideTrashCan();
+    _originalPoint = null;
+
+    if (removedAnnotation) {
+      logger.i('Annotation removed successfully');
+    } else if (revertedPosition) {
+      logger.i('Annotation reverted to original position');
+    }
+  }
+
+  Future<bool?> _showRemoveConfirmationDialog() async {
+    return showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Remove Annotation'),
+          content: const Text('Do you want to remove this annotation?'),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('No'),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+            ),
+            TextButton(
+              child: const Text('Yes'),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _startPlacementDialogTimer(Point point) {
@@ -107,7 +185,6 @@ class MapGestureHandler {
     _placementDialogTimer = Timer(const Duration(milliseconds: 400), () async {
       try {
         final shouldAddAnnotation = await MapDialogHandler.showNewAnnotationDialog(context);
-
         if (shouldAddAnnotation) {
           logger.i('User confirmed - adding annotation.');
           await annotationsManager.addAnnotation(point);
@@ -132,7 +209,8 @@ class MapGestureHandler {
     _isOnExistingAnnotation = false;
     _isDragging = false;
     _isProcessingDrag = false;
-    _removeTrashCanOverlay();
+    _trashCanHandler.hideTrashCan();
+    _originalPoint = null;
   }
 
   void dispose() {
@@ -141,31 +219,4 @@ class MapGestureHandler {
 
   bool get isDragging => _isDragging;
   PointAnnotation? get selectedAnnotation => _selectedAnnotation;
-
-  void _showTrashCanOverlay() {
-    if (_trashCanOverlayEntry != null) return; // Already showing
-    
-    _trashCanOverlayEntry = OverlayEntry(
-      builder: (context) => Positioned(
-        bottom: 16,
-        right: 16,
-        child: Container(
-          width: 50,
-          height: 50,
-          decoration: const BoxDecoration(
-            color: Colors.redAccent,
-            shape: BoxShape.circle,
-          ),
-          child: const Icon(Icons.delete, color: Colors.white),
-        ),
-      ),
-    );
-
-    Overlay.of(context)?.insert(_trashCanOverlayEntry!);
-  }
-
-  void _removeTrashCanOverlay() {
-    _trashCanOverlayEntry?.remove();
-    _trashCanOverlayEntry = null;
-  }
 }
