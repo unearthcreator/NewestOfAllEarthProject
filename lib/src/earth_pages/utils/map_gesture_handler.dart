@@ -17,6 +17,7 @@ class MapGestureHandler {
   PointAnnotation? _selectedAnnotation;
   bool _isDragging = false;
   bool _isProcessingDrag = false;
+  OverlayEntry? _trashCanOverlayEntry;
 
   MapGestureHandler({
     required this.mapboxMap,
@@ -63,11 +64,11 @@ class MapGestureHandler {
       logger.i('Drag timer completed - annotation can now be dragged');
       _isDragging = true;
       _isProcessingDrag = false;
+      _showTrashCanOverlay();
     });
   }
 
   Future<void> handleDrag(ScreenCoordinate screenPoint) async {
-    // Use a local reference to avoid race conditions.
     final annotationToUpdate = _selectedAnnotation;
 
     if (!_isDragging || annotationToUpdate == null || _isProcessingDrag) {
@@ -96,6 +97,7 @@ class MapGestureHandler {
     _isDragging = false;
     _isProcessingDrag = false;
     _selectedAnnotation = null;
+    _removeTrashCanOverlay();
   }
 
   void _startPlacementDialogTimer(Point point) {
@@ -130,6 +132,7 @@ class MapGestureHandler {
     _isOnExistingAnnotation = false;
     _isDragging = false;
     _isProcessingDrag = false;
+    _removeTrashCanOverlay();
   }
 
   void dispose() {
@@ -138,4 +141,31 @@ class MapGestureHandler {
 
   bool get isDragging => _isDragging;
   PointAnnotation? get selectedAnnotation => _selectedAnnotation;
+
+  void _showTrashCanOverlay() {
+    if (_trashCanOverlayEntry != null) return; // Already showing
+    
+    _trashCanOverlayEntry = OverlayEntry(
+      builder: (context) => Positioned(
+        bottom: 16,
+        right: 16,
+        child: Container(
+          width: 50,
+          height: 50,
+          decoration: const BoxDecoration(
+            color: Colors.redAccent,
+            shape: BoxShape.circle,
+          ),
+          child: const Icon(Icons.delete, color: Colors.white),
+        ),
+      ),
+    );
+
+    Overlay.of(context)?.insert(_trashCanOverlayEntry!);
+  }
+
+  void _removeTrashCanOverlay() {
+    _trashCanOverlayEntry?.remove();
+    _trashCanOverlayEntry = null;
+  }
 }
