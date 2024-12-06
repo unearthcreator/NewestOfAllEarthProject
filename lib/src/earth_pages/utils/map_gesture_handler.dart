@@ -16,6 +16,7 @@ class MapGestureHandler {
   bool _isOnExistingAnnotation = false;
   PointAnnotation? _selectedAnnotation;
   bool _isDragging = false;
+  bool _isProcessingDrag = false;
 
   MapGestureHandler({
     required this.mapboxMap,
@@ -29,20 +30,19 @@ class MapGestureHandler {
         RenderedQueryGeometry.fromScreenCoordinate(screenPoint),
         RenderedQueryOptions(layerIds: [annotationsManager.annotationLayerId]),
       );
-      
+
       logger.i('Features found: ${features.length}');
-      
+
       final pressPoint = await mapboxMap.coordinateForPixel(screenPoint);
       if (pressPoint == null) {
         logger.w('Could not convert screen coordinate to map coordinate');
         return;
       }
-      
+
       _longPressPoint = pressPoint;
       _isOnExistingAnnotation = features.isNotEmpty;
-      
+
       if (!_isOnExistingAnnotation) {
-        // Start with dialog first
         _startPlacementDialogTimer(pressPoint);
       } else {
         _selectedAnnotation = await annotationsManager.findNearestAnnotation(pressPoint);
@@ -58,46 +58,55 @@ class MapGestureHandler {
   void _startDragTimer() {
     _longPressTimer?.cancel();
     logger.i('Starting drag timer');
-    
+
     _longPressTimer = Timer(const Duration(seconds: 1), () {
       logger.i('Drag timer completed - annotation can now be dragged');
       _isDragging = true;
+      _isProcessingDrag = false;
     });
   }
 
   Future<void> handleDrag(ScreenCoordinate screenPoint) async {
-    if (!_isDragging || _selectedAnnotation == null) return;
+    // Use a local reference to avoid race conditions.
+    final annotationToUpdate = _selectedAnnotation;
+
+    if (!_isDragging || annotationToUpdate == null || _isProcessingDrag) {
+      logger.i('Skipping drag: isDragging=$_isDragging, hasAnnotation=${annotationToUpdate != null}');
+      return;
+    }
 
     try {
+      _isProcessingDrag = true;
       final newPoint = await mapboxMap.coordinateForPixel(screenPoint);
       if (newPoint != null) {
-        await annotationsManager.updateVisualPosition(_selectedAnnotation!, newPoint);
-      } else {
-        logger.w('Could not convert screen coordinate to map coordinate during drag');
+        await annotationsManager.updateVisualPosition(annotationToUpdate, newPoint);
       }
     } catch (e) {
       logger.e('Error during drag: $e');
+    } finally {
+      _isProcessingDrag = false;
+      if (!_isDragging) {
+        _selectedAnnotation = null; // Clear selection if drag ended
+      }
     }
   }
 
   void endDrag() {
-    if (_isDragging && _selectedAnnotation != null) {
-      logger.i('Ending drag');
-      _isDragging = false;
-      _selectedAnnotation = null;
-    }
+    logger.i('Ending drag');
+    _isDragging = false;
+    _isProcessingDrag = false;
+    _selectedAnnotation = null;
   }
 
   void _startPlacementDialogTimer(Point point) {
     _placementDialogTimer?.cancel();
     logger.i('Starting placement dialog timer');
-    
+
     _placementDialogTimer = Timer(const Duration(milliseconds: 400), () async {
       try {
         final shouldAddAnnotation = await MapDialogHandler.showNewAnnotationDialog(context);
-        
+
         if (shouldAddAnnotation) {
-          // Only create annotation if user confirms
           logger.i('User confirmed - adding annotation.');
           await annotationsManager.addAnnotation(point);
           logger.i('Annotation added successfully');
@@ -120,6 +129,7 @@ class MapGestureHandler {
     _selectedAnnotation = null;
     _isOnExistingAnnotation = false;
     _isDragging = false;
+    _isProcessingDrag = false;
   }
 
   void dispose() {
