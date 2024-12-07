@@ -1,40 +1,58 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart'; // Import Riverpod
-import 'package:map_mvp_project/src/app.dart'; // Your app file
-import 'package:map_mvp_project/services/error_handler.dart'; // Import error handling and logger
-import 'package:map_mvp_project/services/orientation_util.dart'; // Import orientation utility
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:map_mvp_project/src/app.dart';
+import 'package:map_mvp_project/services/error_handler.dart';
+import 'package:map_mvp_project/services/orientation_util.dart';
 import 'package:flutter/services.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+import 'package:hive/hive.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+
+import 'package:map_mvp_project/models/annotation.dart';
+import 'package:map_mvp_project/repositories/local_annotations_repository.dart';
 
 void main() {
-  // Setup error handling for Flutter framework and async errors
   setupErrorHandling();
-
-  // Start app initialization with error handling
-  runAppWithErrorHandling(_initializeApp);  // Now calling the private function
-
-    // Hide the status bar
+  runAppWithErrorHandling(_initializeApp);
 
   String ACCESS_TOKEN = const String.fromEnvironment("ACCESS_TOKEN");
   MapboxOptions.setAccessToken(ACCESS_TOKEN);
-  
+
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
 }
 
-// App initialization function (private)
-void _initializeApp() {
+void _initializeApp() async {
   WidgetsFlutterBinding.ensureInitialized();
-  logger.i('Initializing app and locking orientation.');
-
-  // Call lockOrientation from orientation_util.dart
-  lockOrientation().then((_) {
-    _runAppSafely();  // Now calling the private function
-  }).catchError((error, stackTrace) {
+  logger.i('Initializing app, locking orientation, and initializing Hive.');
+  
+  await Hive.initFlutter();
+  
+  await lockOrientation().catchError((error, stackTrace) {
     logger.e('Failed to set orientation', error: error, stackTrace: stackTrace);
+  });
+
+  _runAppSafely();
+
+  // Quick sanity check after a short delay to ensure the app has started.
+  Future.delayed(Duration(seconds: 2), () async {
+    final repo = LocalAnnotationsRepository();
+    final testAnnotation = Annotation(
+      id: 'test-annotation-id',
+      title: 'Test Annotation',
+      iconName: 'test_icon',
+      date: DateTime.now(),
+      note: 'This is a test note',
+      images: [],
+      latitude: 40.6892,
+      longitude: -74.0445,
+    );
+
+    await repo.addAnnotation(testAnnotation);
+    final annotations = await repo.getAnnotations();
+    logger.i('Annotations retrieved from local DB: $annotations');
   });
 }
 
-// Function to safely run the app with error handling (private)
 void _runAppSafely() {
   try {
     runApp(const ProviderScope(child: MyApp()));
