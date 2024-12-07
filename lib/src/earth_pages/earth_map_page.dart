@@ -7,7 +7,7 @@ import 'package:map_mvp_project/services/error_handler.dart';
 
 class EarthMapPage extends StatefulWidget {
   const EarthMapPage({super.key});
-  
+
   @override
   EarthMapPageState createState() => EarthMapPageState();
 }
@@ -16,7 +16,7 @@ class EarthMapPageState extends State<EarthMapPage> {
   late MapboxMap _mapboxMap;
   late MapAnnotationsManager _annotationsManager;
   late MapGestureHandler _gestureHandler;
-  
+
   bool _isMapReady = false;
   bool _isError = false;
   String _errorMessage = '';
@@ -31,18 +31,18 @@ class EarthMapPageState extends State<EarthMapPage> {
     try {
       logger.i('Starting map initialization');
       _mapboxMap = mapboxMap;
-      
+
       final annotationManager = await mapboxMap.annotations
           .createPointAnnotationManager()
           .onError((error, stackTrace) {
-        logger.e('Failed to create annotation manager', 
-          error: error, 
+        logger.e('Failed to create annotation manager',
+          error: error,
           stackTrace: stackTrace);
         throw Exception('Failed to initialize map annotations');
       });
 
       _annotationsManager = MapAnnotationsManager(annotationManager);
-      
+
       _gestureHandler = MapGestureHandler(
         mapboxMap: mapboxMap,
         annotationsManager: _annotationsManager,
@@ -50,13 +50,13 @@ class EarthMapPageState extends State<EarthMapPage> {
       );
 
       logger.i('Map initialization completed successfully');
-      
+
       if (mounted) {
         setState(() => _isMapReady = true);
       }
     } catch (e, stackTrace) {
-      logger.e('Error during map initialization', 
-        error: e, 
+      logger.e('Error during map initialization',
+        error: e,
         stackTrace: stackTrace);
       if (mounted) {
         setState(() {
@@ -76,8 +76,8 @@ class EarthMapPageState extends State<EarthMapPage> {
       );
       _gestureHandler.handleLongPress(screenPoint);
     } catch (e, stackTrace) {
-      logger.e('Error handling long press', 
-        error: e, 
+      logger.e('Error handling long press',
+        error: e,
         stackTrace: stackTrace);
     }
   }
@@ -92,8 +92,8 @@ class EarthMapPageState extends State<EarthMapPage> {
         _gestureHandler.handleDrag(screenPoint);
       }
     } catch (e, stackTrace) {
-      logger.e('Error handling drag update', 
-        error: e, 
+      logger.e('Error handling drag update',
+        error: e,
         stackTrace: stackTrace);
     }
   }
@@ -101,11 +101,11 @@ class EarthMapPageState extends State<EarthMapPage> {
   void _handleLongPressEnd(LongPressEndDetails details) {
     try {
       logger.i('Long press ended');
+      // Only call endDrag() here, do not call cancelTimer()
       _gestureHandler.endDrag();
-      _gestureHandler.cancelTimer();
     } catch (e, stackTrace) {
-      logger.e('Error handling long press end', 
-        error: e, 
+      logger.e('Error handling long press end',
+        error: e,
         stackTrace: stackTrace);
     }
   }
@@ -117,8 +117,8 @@ class EarthMapPageState extends State<EarthMapPage> {
       _gestureHandler.dispose();
       super.dispose();
     } catch (e, stackTrace) {
-      logger.e('Error disposing EarthMapPage', 
-        error: e, 
+      logger.e('Error disposing EarthMapPage',
+        error: e,
         stackTrace: stackTrace);
       super.dispose();
     }
@@ -131,7 +131,7 @@ class EarthMapPageState extends State<EarthMapPage> {
         children: [
           const Icon(Icons.error_outline, color: Colors.red, size: 48),
           const SizedBox(height: 16),
-          Text(_errorMessage, 
+          Text(_errorMessage,
             textAlign: TextAlign.center,
             style: const TextStyle(color: Colors.red),
           ),
@@ -152,8 +152,8 @@ class EarthMapPageState extends State<EarthMapPage> {
       onLongPressEnd: _handleLongPressEnd,
       onLongPressCancel: () {
         logger.i('Long press cancelled');
+        // Only call endDrag() here, do not call cancelTimer()
         _gestureHandler.endDrag();
-        _gestureHandler.cancelTimer();
       },
       child: MapWidget(
         cameraOptions: MapConfig.defaultCameraOptions,
@@ -179,7 +179,7 @@ class EarthMapPageState extends State<EarthMapPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _isError 
+      body: _isError
         ? _buildErrorWidget()
         : Stack(
             children: [
