@@ -2,9 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:map_mvp_project/services/error_handler.dart';
-import 'package:map_mvp_project/src/earth_pages/dialogs/map_dialog_handler.dart';
-import 'package:map_mvp_project/src/earth_pages/dialogs/map_icon_selection_dialog.dart'; // Imported icon dialog
 import 'package:map_mvp_project/src/earth_pages/annotations/map_annotations_manager.dart';
+import 'package:map_mvp_project/src/earth_pages/dialogs/map_icon_selection_dialog.dart';
+import 'package:map_mvp_project/src/earth_pages/dialogs/annotation_initialization_dialog.dart';
+import 'package:map_mvp_project/src/earth_pages/dialogs/annotation_form_dialog.dart';
 import 'package:map_mvp_project/src/earth_pages/utils/trash_can_handler.dart';
 
 class MapGestureHandler {
@@ -22,6 +23,11 @@ class MapGestureHandler {
   final TrashCanHandler _trashCanHandler;
   ScreenCoordinate? _lastDragScreenPoint;
   Point? _originalPoint;
+
+  // Fields to store user choices from dialogs
+  String? _chosenTitle;
+  IconData? _chosenIcon;
+  String? _chosenDate;
 
   MapGestureHandler({
     required this.mapboxMap,
@@ -146,6 +152,7 @@ class MapGestureHandler {
       }
     }
 
+    // Reset state here after decision
     _selectedAnnotation = null;
     _isDragging = false;
     _isProcessingDrag = false;
@@ -197,24 +204,38 @@ class MapGestureHandler {
     _placementDialogTimer = Timer(const Duration(milliseconds: 400), () async {
       try {
         logger.i('Attempting to show initial form dialog now.');
-        final initialData = await _showInitialFormDialog(context);
+        final initialData = await showAnnotationInitializationDialog(context);
         logger.i('Initial form dialog returned: $initialData');
         if (initialData != null) {
-          final title = initialData['title'] as String;
-          final chosenIcon = initialData['icon'] as IconData;
-          final date = initialData['date'] as String;
+          _chosenTitle = initialData['title'] as String;
+          _chosenIcon = initialData['icon'] as IconData?; // Could be null if custom icon logic was used
+          _chosenDate = initialData['date'] as String;
 
-          logger.i('Got title=$title, icon=$chosenIcon, date=$date from initial dialog. Showing annotation form dialog next.');
-          final result = await _showAnnotationFormDialog(
+          logger.i('Got title=$_chosenTitle, icon=$_chosenIcon, date=$_chosenDate from initial dialog. Showing annotation form dialog next.');
+          final result = await showAnnotationFormDialog(
             context,
-            title: title,
-            chosenIcon: chosenIcon,
-            date: date,
+            title: _chosenTitle!,
+            chosenIcon: _chosenIcon ?? Icons.star, // fallback to star if null
+            date: _chosenDate!,
           );
           logger.i('Annotation form dialog returned: $result');
           if (result != null) {
             final note = result['note'] ?? '';
             logger.i('User entered note: $note');
+            // Now we have _longPressPoint, _chosenTitle, _chosenDate, _chosenIcon, and note.
+            // Let's place the annotation on the map at _longPressPoint.
+
+            if (_longPressPoint != null) {
+              logger.i('Adding annotation at ${_longPressPoint?.coordinates} with chosen data.');
+              // You might need to update annotationsManager.addAnnotation to accept icon/title/note.
+              // For now, just place a default annotation:
+              await annotationsManager.addAnnotation(_longPressPoint!);
+
+              logger.i('Annotation added successfully at ${_longPressPoint?.coordinates}');
+            } else {
+              logger.w('No long press point stored, cannot place annotation.');
+            }
+
           } else {
             logger.i('User cancelled the annotation note dialog - no annotation added.');
           }
@@ -225,197 +246,6 @@ class MapGestureHandler {
         logger.e('Error in placement dialog timer: $e');
       }
     });
-  }
-
-  Future<Map<String, dynamic>?> _showInitialFormDialog(BuildContext context) async {
-    logger.i('Showing initial form dialog (title, icon, date).');
-    final titleController = TextEditingController();
-    final dateController = TextEditingController();
-
-    IconData chosenIcon = Icons.star;
-
-    return showDialog<Map<String, dynamic>?>(
-      context: context,
-      barrierDismissible: false, // Make sure user can't dismiss by tapping outside
-      builder: (dialogContext) {
-        final screenWidth = MediaQuery.of(dialogContext).size.width;
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              content: SizedBox(
-                width: screenWidth * 0.5,
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Top row with X to close
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          GestureDetector(
-                            onTap: () {
-                              logger.i('Close icon tapped in initial form dialog.');
-                              Navigator.of(dialogContext).pop(null);
-                            },
-                            child: const Icon(Icons.close),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      const Text('Title:', style: TextStyle(fontWeight: FontWeight.bold)),
-                      TextField(
-                        controller: titleController,
-                        maxLength: 25,
-                        decoration: InputDecoration(
-                          hintText: 'Max 25 characters',
-                          hintStyle: TextStyle(
-                            color: Colors.black.withOpacity(0.5),
-                          ),
-                          counterText: '',
-                        ),
-                        buildCounter: (context, {required int currentLength, required bool isFocused, required int? maxLength}) {
-                          if (maxLength == null) return null;
-                          if (currentLength == 0) {
-                            return null; // No counter if no characters typed
-                          } else {
-                            // Show currentLength/maxLength with 50% opacity
-                            return Text(
-                              '$currentLength/$maxLength',
-                              style: TextStyle(
-                                color: Colors.black.withOpacity(0.5),
-                                fontSize: 12,
-                              ),
-                            );
-                          }
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      const Text('Icon:', style: TextStyle(fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(chosenIcon),
-                          const SizedBox(width: 8),
-                          ElevatedButton(
-                            onPressed: () async {
-                              logger.i('Opening icon selection dialog from initial form dialog.');
-                              final selectedIcon = await showIconSelectionDialog(dialogContext);
-                              logger.i('Icon selection dialog returned: $selectedIcon');
-                              if (selectedIcon != null) {
-                                setState(() {
-                                  chosenIcon = selectedIcon;
-                                });
-                              }
-                            },
-                            child: const Text('Change'),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      const Text('Date:', style: TextStyle(fontWeight: FontWeight.bold)),
-                      TextField(
-                        controller: dateController,
-                        decoration: const InputDecoration(
-                          hintText: 'Enter date',
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              actions: [
-                TextButton(
-                  child: const Text('Continue'),
-                  onPressed: () {
-                    logger.i('Continue pressed in initial form dialog.');
-                    Navigator.of(dialogContext).pop({
-                      'title': titleController.text.trim(),
-                      'icon': chosenIcon,
-                      'date': dateController.text.trim(),
-                    });
-                  },
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Future<Map<String, String>?> _showAnnotationFormDialog(
-    BuildContext context, {
-    required String title,
-    required IconData chosenIcon,
-    required String date,
-  }) async {
-    logger.i('Showing annotation form dialog (icon, title, date, note).');
-    final noteController = TextEditingController();
-
-    return showDialog<Map<String, String>?>(
-      context: context,
-      builder: (dialogContext) {
-        final screenWidth = MediaQuery.of(dialogContext).size.width;
-        return AlertDialog(
-          content: SizedBox(
-            width: screenWidth * 0.5, // 50% of screen width
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Row with icon (left), title (center, large), date (right)
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Icon(chosenIcon),
-                      Text(
-                        title,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24),
-                      ),
-                      Text(
-                        date,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('Note:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  TextField(
-                    controller: noteController,
-                    decoration: const InputDecoration(
-                      hintText: 'Enter note',
-                    ),
-                    maxLines: 4,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              child: const Text('Cancel'),
-              onPressed: () {
-                logger.i('User cancelled annotation form dialog.');
-                Navigator.of(dialogContext).pop(null);
-              },
-            ),
-            TextButton(
-              child: const Text('Save'),
-              onPressed: () {
-                final note = noteController.text.trim();
-                logger.i('User pressed save in annotation form dialog, note=$note.');
-                Navigator.of(dialogContext).pop({
-                  'note': note,
-                });
-              },
-            ),
-          ],
-        );
-      },
-    );
   }
 
   void cancelTimer() {
