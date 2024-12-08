@@ -228,45 +228,55 @@ class MapGestureHandler {
         return AlertDialog(
           content: SizedBox(
             width: screenWidth * 0.5,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Top row with X to close
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    GestureDetector(
-                      onTap: () => Navigator.of(dialogContext).pop(false),
-                      child: const Icon(Icons.close),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start, // left align text
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Top row with X to close
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      GestureDetector(
+                        onTap: () => Navigator.of(dialogContext).pop(false),
+                        child: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Title:'),
+                  TextField(
+                    controller: titleController,
+                    decoration: const InputDecoration(
+                      hintText: 'Enter title',
                     ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                const Text('Title:'),
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    hintText: 'Enter title',
                   ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const Text('Icon:'),
-                    const SizedBox(width: 8),
-                    const Icon(Icons.star), // Placeholder icon
-                  ],
-                ),
-                const SizedBox(height: 16),
-                const Text('Date:'),
-                TextField(
-                  controller: dateController,
-                  decoration: const InputDecoration(
-                    hintText: 'Enter date',
+                  const SizedBox(height: 16),
+                  const Text('Icon:'),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.star), // Placeholder icon
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () {
+                          // Future: open icon selection
+                        },
+                        child: const Text('Change'),
+                      ),
+                    ],
                   ),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  const Text('Date:'),
+                  TextField(
+                    controller: dateController,
+                    decoration: const InputDecoration(
+                      hintText: 'Enter date',
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           actions: [
@@ -296,6 +306,7 @@ class MapGestureHandler {
             width: screenWidth * 0.5, // 50% of screen width
             child: SingleChildScrollView(
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start, // align text to left here too
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text('Title:'),
