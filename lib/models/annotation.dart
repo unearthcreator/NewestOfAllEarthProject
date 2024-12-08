@@ -1,6 +1,3 @@
-// lib/models/annotation.dart
-import 'dart:convert';
-
 class Annotation {
   final String id;
   final String title;
@@ -22,7 +19,6 @@ class Annotation {
     required this.longitude,
   });
 
-  // Convert Annotation to a JSON-compatible Map<String, dynamic>.
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -30,13 +26,12 @@ class Annotation {
       'iconName': iconName,
       'date': date.toIso8601String(),
       'note': note,
-      'images': images, // this is already a List<String>, which is JSON-friendly
+      'images': images,
       'latitude': latitude,
       'longitude': longitude,
     };
   }
 
-  // Create an Annotation from a JSON-compatible Map<String, dynamic>.
   factory Annotation.fromJson(Map<String, dynamic> json) {
     return Annotation(
       id: json['id'] as String,
@@ -48,5 +43,10 @@ class Annotation {
       latitude: json['latitude'] as double,
       longitude: json['longitude'] as double,
     );
+  }
+
+  @override
+  String toString() {
+    return 'Annotation(id: $id, title: $title, iconName: $iconName, date: $date, note: $note, images: $images, latitude: $latitude, longitude: $longitude)';
   }
 }

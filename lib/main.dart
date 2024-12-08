@@ -5,10 +5,10 @@ import 'package:map_mvp_project/services/error_handler.dart';
 import 'package:map_mvp_project/services/orientation_util.dart';
 import 'package:flutter/services.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
-import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import 'package:map_mvp_project/models/annotation.dart';
+import 'package:map_mvp_project/repositories/i_annotations_repository.dart'; // Ensure this import is present
 import 'package:map_mvp_project/repositories/local_annotations_repository.dart';
 
 void main() {
@@ -34,8 +34,9 @@ void _initializeApp() async {
   _runAppSafely();
 
   // Quick sanity check after a short delay to ensure the app has started.
-  Future.delayed(Duration(seconds: 2), () async {
-    final repo = LocalAnnotationsRepository();
+  Future.delayed(const Duration(seconds: 2), () async {
+    // Notice we declare `repo` as `IAnnotationsRepository` instead of `LocalAnnotationsRepository`
+    IAnnotationsRepository repo = LocalAnnotationsRepository();
     final testAnnotation = Annotation(
       id: 'test-annotation-id',
       title: 'Test Annotation',
@@ -49,6 +50,7 @@ void _initializeApp() async {
 
     await repo.addAnnotation(testAnnotation);
     final annotations = await repo.getAnnotations();
+    // Because Annotation now has a toString(), this will print detailed info.
     logger.i('Annotations retrieved from local DB: $annotations');
   });
 }
