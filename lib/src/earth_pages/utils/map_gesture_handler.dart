@@ -195,16 +195,20 @@ class MapGestureHandler {
     logger.i('Starting placement dialog timer');
     _placementDialogTimer = Timer(const Duration(milliseconds: 400), () async {
       try {
-        // Show the initial form dialog with Title, Date, Icon (placeholder) and continue button
-        final initialResult = await _showInitialFormDialog(context);
-        if (initialResult == true) {
-          // User pressed continue, now show the annotation form dialog (title/note)
-          final result = await _showAnnotationFormDialog(context);
+        // Now _showInitialFormDialog returns a map with title, icon, date
+        final initialData = await _showInitialFormDialog(context);
+        if (initialData != null) {
+          // User pressed continue and we have title, chosenIcon, date
+          final result = await _showAnnotationFormDialog(
+            context,
+            title: initialData['title'] as String,
+            chosenIcon: initialData['icon'] as IconData,
+            date: initialData['date'] as String,
+          );
           if (result != null) {
-            final title = result['title'] ?? '';
             final note = result['note'] ?? '';
-            logger.i('User entered title: $title, note: $note');
-            // Later: integrate repository calls to actually save the annotation
+            logger.i('User entered note: $note');
+            // Later: integrate repository calls to actually save the annotation with all data
           } else {
             logger.i('User cancelled the annotation note dialog - no annotation added.');
           }
@@ -217,14 +221,14 @@ class MapGestureHandler {
     });
   }
 
-  Future<bool?> _showInitialFormDialog(BuildContext context) async {
+  // Now returns a map with 'title', 'icon', 'date' or null if canceled
+  Future<Map<String, dynamic>?> _showInitialFormDialog(BuildContext context) async {
     final titleController = TextEditingController();
     final dateController = TextEditingController();
 
-    // We'll store the chosenIcon in this dialog
     IconData chosenIcon = Icons.star;
 
-    return showDialog<bool>(
+    return showDialog<Map<String, dynamic>?>(
       context: context,
       builder: (dialogContext) {
         final screenWidth = MediaQuery.of(dialogContext).size.width;
@@ -243,33 +247,51 @@ class MapGestureHandler {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           GestureDetector(
-                            onTap: () => Navigator.of(dialogContext).pop(false),
+                            onTap: () => Navigator.of(dialogContext).pop(null),
                             child: const Icon(Icons.close),
                           ),
                         ],
                       ),
                       const SizedBox(height: 16),
-                      const Text('Title:'),
+                      const Text('Title:', style: TextStyle(fontWeight: FontWeight.bold)),
                       TextField(
                         controller: titleController,
-                        decoration: const InputDecoration(
-                          hintText: 'Enter title',
+                        maxLength: 25,
+                        decoration: InputDecoration(
+                          hintText: 'Max 25 characters',
+                          hintStyle: TextStyle(
+                            color: Colors.black.withOpacity(0.5),
+                          ),
+                          counterText: '',
                         ),
+                        buildCounter: (context, {required int currentLength, required bool isFocused, required int? maxLength}) {
+                          if (maxLength == null) return null;
+                          if (currentLength == 0) {
+                            return null; // No counter if no characters typed
+                          } else {
+                            // Show currentLength/maxLength with 50% opacity
+                            return Text(
+                              '$currentLength/$maxLength',
+                              style: TextStyle(
+                                color: Colors.black.withOpacity(0.5),
+                                fontSize: 12,
+                              ),
+                            );
+                          }
+                        },
                       ),
                       const SizedBox(height: 16),
-                      const Text('Icon:'),
+                      const Text('Icon:', style: TextStyle(fontWeight: FontWeight.bold)),
                       const SizedBox(height: 8),
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(chosenIcon), // Display chosen icon
+                          Icon(chosenIcon),
                           const SizedBox(width: 8),
                           ElevatedButton(
                             onPressed: () async {
-                              // Show the icon selection dialog
                               final selectedIcon = await _showIconSelectionDialog(dialogContext);
                               if (selectedIcon != null) {
-                                // Update chosenIcon and rebuild UI
                                 setState(() {
                                   chosenIcon = selectedIcon;
                                 });
@@ -280,7 +302,7 @@ class MapGestureHandler {
                         ],
                       ),
                       const SizedBox(height: 16),
-                      const Text('Date:'),
+                      const Text('Date:', style: TextStyle(fontWeight: FontWeight.bold)),
                       TextField(
                         controller: dateController,
                         decoration: const InputDecoration(
@@ -295,8 +317,12 @@ class MapGestureHandler {
                 TextButton(
                   child: const Text('Continue'),
                   onPressed: () {
-                    // For now, just continue
-                    Navigator.of(dialogContext).pop(true);
+                    // Return the chosen data
+                    Navigator.of(dialogContext).pop({
+                      'title': titleController.text.trim(),
+                      'icon': chosenIcon,
+                      'date': dateController.text.trim(),
+                    });
                   },
                 ),
               ],
@@ -307,11 +333,15 @@ class MapGestureHandler {
     );
   }
 
-  Future<Map<String, String>?> _showAnnotationFormDialog(BuildContext context) async {
-    final titleController = TextEditingController();
+  // Now, we show chosen icon at top left, title center top, date top right, and note field below
+  Future<Map<String, String>?> _showAnnotationFormDialog(BuildContext context, {
+    required String title,
+    required IconData chosenIcon,
+    required String date,
+  }) async {
     final noteController = TextEditingController();
 
-    return showDialog<Map<String, String>>(
+    return showDialog<Map<String, String>?>(
       context: context,
       builder: (dialogContext) {
         final screenWidth = MediaQuery.of(dialogContext).size.width;
@@ -320,18 +350,26 @@ class MapGestureHandler {
             width: screenWidth * 0.5, // 50% of screen width
             child: SingleChildScrollView(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start, // left align
+                crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text('Title:'),
-                  TextField(
-                    controller: titleController,
-                    decoration: const InputDecoration(
-                      hintText: 'Enter title',
-                    ),
+                  // Top row with icon (left), title (center), date (right)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Icon(chosenIcon),
+                      Text(
+                        title,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        date,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
-                  const Text('Note:'),
+                  const Text('Note:', style: TextStyle(fontWeight: FontWeight.bold)),
                   TextField(
                     controller: noteController,
                     decoration: const InputDecoration(
@@ -351,10 +389,8 @@ class MapGestureHandler {
             TextButton(
               child: const Text('Save'),
               onPressed: () {
-                final title = titleController.text.trim();
                 final note = noteController.text.trim();
                 Navigator.of(dialogContext).pop({
-                  'title': title,
                   'note': note,
                 });
               },
