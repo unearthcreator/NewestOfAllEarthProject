@@ -1,5 +1,6 @@
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:map_mvp_project/services/error_handler.dart';
+
 class MapAnnotationsManager {
   final PointAnnotationManager _annotationManager;
   final List<PointAnnotation> _annotations = [];

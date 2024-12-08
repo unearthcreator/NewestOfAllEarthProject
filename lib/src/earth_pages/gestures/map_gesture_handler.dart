@@ -2,8 +2,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 import 'package:map_mvp_project/services/error_handler.dart';
-import 'package:map_mvp_project/src/earth_pages/utils/map_dialog_handler.dart';
-import 'package:map_mvp_project/src/earth_pages/utils/map_annotations_manager.dart';
+import 'package:map_mvp_project/src/earth_pages/dialogs/map_dialog_handler.dart';
+import 'package:map_mvp_project/src/earth_pages/dialogs/map_icon_selection_dialog.dart'; // Imported icon dialog
+import 'package:map_mvp_project/src/earth_pages/annotations/map_annotations_manager.dart';
 import 'package:map_mvp_project/src/earth_pages/utils/trash_can_handler.dart';
 
 class MapGestureHandler {
@@ -46,11 +47,12 @@ class MapGestureHandler {
       _isOnExistingAnnotation = features.isNotEmpty;
 
       if (!_isOnExistingAnnotation) {
+        logger.i('No existing annotation, will start placement dialog timer.');
         _startPlacementDialogTimer(pressPoint);
       } else {
+        logger.i('Long press on existing annotation.');
         _selectedAnnotation = await annotationsManager.findNearestAnnotation(pressPoint);
         if (_selectedAnnotation != null) {
-          // Store the original point of the annotation
           try {
             _originalPoint = Point.fromJson({
               'type': 'Point',
@@ -65,7 +67,7 @@ class MapGestureHandler {
           }
           _startDragTimer();
         } else {
-          logger.w('No annotation found to start dragging');
+          logger.w('No annotation found to start dragging.');
         }
       }
     } catch (e) {
@@ -75,9 +77,9 @@ class MapGestureHandler {
 
   void _startDragTimer() {
     _longPressTimer?.cancel();
-    logger.i('Starting drag timer');
+    logger.i('Starting drag timer.');
     _longPressTimer = Timer(const Duration(seconds: 1), () {
-      logger.i('Drag timer completed - annotation can now be dragged');
+      logger.i('Drag timer completed - annotation can now be dragged.');
       _isDragging = true;
       _isProcessingDrag = false;
       _trashCanHandler.showTrashCan();
@@ -115,7 +117,7 @@ class MapGestureHandler {
   }
 
   Future<void> endDrag() async {
-    logger.i('Ending drag');
+    logger.i('Ending drag.');
     logger.i('Original point at end drag: ${_originalPoint?.coordinates}');
     final annotationToRemove = _selectedAnnotation;
     bool removedAnnotation = false;
@@ -125,7 +127,7 @@ class MapGestureHandler {
         _lastDragScreenPoint != null &&
         _trashCanHandler.isOverTrashCan(_lastDragScreenPoint!)) {
       
-      logger.i('Annotation ${annotationToRemove.id} dropped over trash can. Showing dialog.');
+      logger.i('Annotation ${annotationToRemove.id} dropped over trash can. Showing removal dialog.');
       final shouldRemove = await _showRemoveConfirmationDialog();
 
       if (shouldRemove == true) {
@@ -144,7 +146,6 @@ class MapGestureHandler {
       }
     }
 
-    // Reset state here after the user made a decision
     _selectedAnnotation = null;
     _isDragging = false;
     _isProcessingDrag = false;
@@ -153,16 +154,16 @@ class MapGestureHandler {
     _trashCanHandler.hideTrashCan();
 
     if (removedAnnotation) {
-      logger.i('Annotation removed successfully');
+      logger.i('Annotation removed successfully.');
     } else if (revertedPosition) {
-      logger.i('Annotation reverted to original position');
+      logger.i('Annotation reverted to original position.');
     } else {
-      logger.i('No removal or revert occurred');
+      logger.i('No removal or revert occurred.');
     }
   }
 
   Future<bool?> _showRemoveConfirmationDialog() async {
-    logger.i('Showing remove confirmation dialog');
+    logger.i('Showing remove confirmation dialog.');
     return showDialog<bool>(
       context: context,
       builder: (BuildContext dialogContext) {
@@ -173,14 +174,14 @@ class MapGestureHandler {
             TextButton(
               child: const Text('No'),
               onPressed: () {
-                logger.i('User selected NO in the dialog');
+                logger.i('User selected NO in remove dialog.');
                 Navigator.of(dialogContext).pop(false);
               },
             ),
             TextButton(
               child: const Text('Yes'),
               onPressed: () {
-                logger.i('User selected YES in the dialog');
+                logger.i('User selected YES in remove dialog.');
                 Navigator.of(dialogContext).pop(true);
               },
             ),
@@ -192,23 +193,28 @@ class MapGestureHandler {
 
   void _startPlacementDialogTimer(Point point) {
     _placementDialogTimer?.cancel();
-    logger.i('Starting placement dialog timer');
+    logger.i('Starting placement dialog timer for annotation at $point.');
     _placementDialogTimer = Timer(const Duration(milliseconds: 400), () async {
       try {
-        // Now _showInitialFormDialog returns a map with title, icon, date
+        logger.i('Attempting to show initial form dialog now.');
         final initialData = await _showInitialFormDialog(context);
+        logger.i('Initial form dialog returned: $initialData');
         if (initialData != null) {
-          // User pressed continue and we have title, chosenIcon, date
+          final title = initialData['title'] as String;
+          final chosenIcon = initialData['icon'] as IconData;
+          final date = initialData['date'] as String;
+
+          logger.i('Got title=$title, icon=$chosenIcon, date=$date from initial dialog. Showing annotation form dialog next.');
           final result = await _showAnnotationFormDialog(
             context,
-            title: initialData['title'] as String,
-            chosenIcon: initialData['icon'] as IconData,
-            date: initialData['date'] as String,
+            title: title,
+            chosenIcon: chosenIcon,
+            date: date,
           );
+          logger.i('Annotation form dialog returned: $result');
           if (result != null) {
             final note = result['note'] ?? '';
             logger.i('User entered note: $note');
-            // Later: integrate repository calls to actually save the annotation with all data
           } else {
             logger.i('User cancelled the annotation note dialog - no annotation added.');
           }
@@ -221,8 +227,8 @@ class MapGestureHandler {
     });
   }
 
-  // Now returns a map with 'title', 'icon', 'date' or null if canceled
   Future<Map<String, dynamic>?> _showInitialFormDialog(BuildContext context) async {
+    logger.i('Showing initial form dialog (title, icon, date).');
     final titleController = TextEditingController();
     final dateController = TextEditingController();
 
@@ -230,6 +236,7 @@ class MapGestureHandler {
 
     return showDialog<Map<String, dynamic>?>(
       context: context,
+      barrierDismissible: false, // Make sure user can't dismiss by tapping outside
       builder: (dialogContext) {
         final screenWidth = MediaQuery.of(dialogContext).size.width;
         return StatefulBuilder(
@@ -239,7 +246,7 @@ class MapGestureHandler {
                 width: screenWidth * 0.5,
                 child: SingleChildScrollView(
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start, // align left
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       // Top row with X to close
@@ -247,7 +254,10 @@ class MapGestureHandler {
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
                           GestureDetector(
-                            onTap: () => Navigator.of(dialogContext).pop(null),
+                            onTap: () {
+                              logger.i('Close icon tapped in initial form dialog.');
+                              Navigator.of(dialogContext).pop(null);
+                            },
                             child: const Icon(Icons.close),
                           ),
                         ],
@@ -290,7 +300,9 @@ class MapGestureHandler {
                           const SizedBox(width: 8),
                           ElevatedButton(
                             onPressed: () async {
-                              final selectedIcon = await _showIconSelectionDialog(dialogContext);
+                              logger.i('Opening icon selection dialog from initial form dialog.');
+                              final selectedIcon = await showIconSelectionDialog(dialogContext);
+                              logger.i('Icon selection dialog returned: $selectedIcon');
                               if (selectedIcon != null) {
                                 setState(() {
                                   chosenIcon = selectedIcon;
@@ -317,7 +329,7 @@ class MapGestureHandler {
                 TextButton(
                   child: const Text('Continue'),
                   onPressed: () {
-                    // Return the chosen data
+                    logger.i('Continue pressed in initial form dialog.');
                     Navigator.of(dialogContext).pop({
                       'title': titleController.text.trim(),
                       'icon': chosenIcon,
@@ -333,12 +345,13 @@ class MapGestureHandler {
     );
   }
 
-  // Now, we show chosen icon at top left, title center top, date top right, and note field below
-  Future<Map<String, String>?> _showAnnotationFormDialog(BuildContext context, {
+  Future<Map<String, String>?> _showAnnotationFormDialog(
+    BuildContext context, {
     required String title,
     required IconData chosenIcon,
     required String date,
   }) async {
+    logger.i('Showing annotation form dialog (icon, title, date, note).');
     final noteController = TextEditingController();
 
     return showDialog<Map<String, String>?>(
@@ -353,14 +366,14 @@ class MapGestureHandler {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Top row with icon (left), title (center), date (right)
+                  // Row with icon (left), title (center, large), date (right)
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Icon(chosenIcon),
                       Text(
                         title,
-                        style: const TextStyle(fontWeight: FontWeight.bold),
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 24),
                       ),
                       Text(
                         date,
@@ -384,60 +397,22 @@ class MapGestureHandler {
           actions: [
             TextButton(
               child: const Text('Cancel'),
-              onPressed: () => Navigator.of(dialogContext).pop(null),
+              onPressed: () {
+                logger.i('User cancelled annotation form dialog.');
+                Navigator.of(dialogContext).pop(null);
+              },
             ),
             TextButton(
               child: const Text('Save'),
               onPressed: () {
                 final note = noteController.text.trim();
+                logger.i('User pressed save in annotation form dialog, note=$note.');
                 Navigator.of(dialogContext).pop({
                   'note': note,
                 });
               },
             ),
           ],
-        );
-      },
-    );
-  }
-
-  Future<IconData?> _showIconSelectionDialog(BuildContext dialogContext) async {
-    // A small set of icons to choose from
-    final icons = [
-      Icons.star,
-      Icons.flag,
-      Icons.home,
-      Icons.camera,
-      Icons.map,
-      Icons.favorite,
-    ];
-
-    return showDialog<IconData>(
-      context: dialogContext,
-      builder: (iconDialogContext) {
-        return AlertDialog(
-          title: const Text('Select an Icon'),
-          content: SizedBox(
-            width: MediaQuery.of(iconDialogContext).size.width * 0.5,
-            child: Wrap(
-              spacing: 16,
-              runSpacing: 16,
-              children: icons.map((icon) {
-                return GestureDetector(
-                  onTap: () {
-                    // When tapped, return this icon
-                    Navigator.of(iconDialogContext).pop(icon);
-                  },
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(icon, size: 32),
-                    ],
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
         );
       },
     );
