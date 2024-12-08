@@ -195,11 +195,25 @@ class MapGestureHandler {
     logger.i('Starting placement dialog timer');
     _placementDialogTimer = Timer(const Duration(milliseconds: 400), () async {
       try {
-        final shouldAddAnnotation = await MapDialogHandler.showNewAnnotationDialog(context);
-        if (shouldAddAnnotation) {
-          logger.i('User confirmed - adding annotation.');
-          await annotationsManager.addAnnotation(point);
-          logger.i('Annotation added successfully');
+        // First ask if the user wants to place an annotation
+        final shouldAddAnnotation = await _showConfirmationDialog(
+          context: context,
+          title: 'Place Annotation?',
+          content: 'Do you want to place an annotation here?',
+        );
+
+        if (shouldAddAnnotation == true) {
+          // User said yes, now show the form for title and note
+          final result = await _showAnnotationFormDialog(context);
+          if (result != null) {
+            final title = result['title'] ?? '';
+            final note = result['note'] ?? '';
+            logger.i('User entered title: $title, note: $note');
+            // Here you would integrate repository calls to actually save the annotation
+            // using 'point', 'title', 'note', etc.
+          } else {
+            logger.i('User cancelled after agreeing to place annotation - no annotation added.');
+          }
         } else {
           logger.i('User cancelled - no annotation added.');
         }
@@ -207,6 +221,90 @@ class MapGestureHandler {
         logger.e('Error in placement dialog timer: $e');
       }
     });
+  }
+
+  Future<bool?> _showConfirmationDialog({
+    required BuildContext context,
+    required String title,
+    required String content,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: Text(title),
+          content: Text(content),
+          actions: <Widget>[
+            TextButton(
+              child: const Text('No'),
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+            ),
+            TextButton(
+              child: const Text('Yes'),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<Map<String, String>?> _showAnnotationFormDialog(BuildContext context) async {
+    final titleController = TextEditingController();
+    final noteController = TextEditingController();
+
+    return showDialog<Map<String, String>>(
+      context: context,
+      builder: (dialogContext) {
+        final screenWidth = MediaQuery.of(dialogContext).size.width;
+        return AlertDialog(
+          // Removed the "New Annotation" title
+          content: SizedBox(
+            width: screenWidth * 0.5, // 50% of screen width
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Title:'),
+                  TextField(
+                    controller: titleController,
+                    decoration: const InputDecoration(
+                      hintText: 'Enter title',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text('Note:'),
+                  TextField(
+                    controller: noteController,
+                    decoration: const InputDecoration(
+                      hintText: 'Enter note',
+                    ),
+                    maxLines: 4,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () => Navigator.of(dialogContext).pop(null),
+            ),
+            TextButton(
+              child: const Text('Save'),
+              onPressed: () {
+                final title = titleController.text.trim();
+                final note = noteController.text.trim();
+                Navigator.of(dialogContext).pop({
+                  'title': title,
+                  'note': note,
+                });
+              },
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void cancelTimer() {
