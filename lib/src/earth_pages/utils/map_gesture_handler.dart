@@ -195,27 +195,21 @@ class MapGestureHandler {
     logger.i('Starting placement dialog timer');
     _placementDialogTimer = Timer(const Duration(milliseconds: 400), () async {
       try {
-        // First ask if the user wants to place an annotation
-        final shouldAddAnnotation = await _showConfirmationDialog(
-          context: context,
-          title: 'Place Annotation?',
-          content: 'Do you want to place an annotation here?',
-        );
-
-        if (shouldAddAnnotation == true) {
-          // User said yes, now show the form for title and note
+        // Show the initial form dialog with Title, Date, Icon (placeholder) and continue button
+        final initialResult = await _showInitialFormDialog(context);
+        if (initialResult == true) {
+          // User pressed continue, now show the annotation form dialog (title/note)
           final result = await _showAnnotationFormDialog(context);
           if (result != null) {
             final title = result['title'] ?? '';
             final note = result['note'] ?? '';
             logger.i('User entered title: $title, note: $note');
-            // Here you would integrate repository calls to actually save the annotation
-            // using 'point', 'title', 'note', etc.
+            // Later: integrate repository calls to actually save the annotation
           } else {
-            logger.i('User cancelled after agreeing to place annotation - no annotation added.');
+            logger.i('User cancelled the annotation note dialog - no annotation added.');
           }
         } else {
-          logger.i('User cancelled - no annotation added.');
+          logger.i('User closed the initial form dialog - no annotation added.');
         }
       } catch (e) {
         logger.e('Error in placement dialog timer: $e');
@@ -223,25 +217,65 @@ class MapGestureHandler {
     });
   }
 
-  Future<bool?> _showConfirmationDialog({
-    required BuildContext context,
-    required String title,
-    required String content,
-  }) {
+  Future<bool?> _showInitialFormDialog(BuildContext context) async {
+    final titleController = TextEditingController();
+    final dateController = TextEditingController();
+
     return showDialog<bool>(
       context: context,
-      builder: (BuildContext dialogContext) {
+      builder: (dialogContext) {
+        final screenWidth = MediaQuery.of(dialogContext).size.width;
         return AlertDialog(
-          title: Text(title),
-          content: Text(content),
-          actions: <Widget>[
-            TextButton(
-              child: const Text('No'),
-              onPressed: () => Navigator.of(dialogContext).pop(false),
+          content: SizedBox(
+            width: screenWidth * 0.5,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Top row with X to close
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    GestureDetector(
+                      onTap: () => Navigator.of(dialogContext).pop(false),
+                      child: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Text('Title:'),
+                TextField(
+                  controller: titleController,
+                  decoration: const InputDecoration(
+                    hintText: 'Enter title',
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const Text('Icon:'),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.star), // Placeholder icon
+                  ],
+                ),
+                const SizedBox(height: 16),
+                const Text('Date:'),
+                TextField(
+                  controller: dateController,
+                  decoration: const InputDecoration(
+                    hintText: 'Enter date',
+                  ),
+                ),
+              ],
             ),
+          ),
+          actions: [
             TextButton(
-              child: const Text('Yes'),
-              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Continue'),
+              onPressed: () {
+                // For now, just continue
+                Navigator.of(dialogContext).pop(true);
+              },
             ),
           ],
         );
@@ -258,7 +292,6 @@ class MapGestureHandler {
       builder: (dialogContext) {
         final screenWidth = MediaQuery.of(dialogContext).size.width;
         return AlertDialog(
-          // Removed the "New Annotation" title
           content: SizedBox(
             width: screenWidth * 0.5, // 50% of screen width
             child: SingleChildScrollView(
